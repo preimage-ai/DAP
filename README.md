@@ -57,7 +57,7 @@ pip install -r requirements.txt
 
 ## 🖼️ Dataset
 
-The training dataset will be open soon.
+The training dataset can be found: https://huggingface.co/datasets/Insta360-Research/DAP_data.
 
 
 ## 🤝 Pre-trained model
