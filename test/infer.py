@@ -17,6 +17,8 @@ from networks.models import make  # 建议用 make，而不是 import *
 
 import matplotlib
 
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+
 def colorize_depth_fixed(depth_u8: np.ndarray, cmap: str = "Spectral") -> np.ndarray:
     """
     depth_u8: uint8, 0~255
@@ -29,6 +31,23 @@ def colorize_depth_fixed(depth_u8: np.ndarray, cmap: str = "Spectral") -> np.nda
 
 def ensure_dir_for_file(path: str):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+def collect_image_paths(input_dir: str):
+    if not os.path.isdir(input_dir):
+        raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
+
+    image_paths = []
+    for entry in sorted(os.listdir(input_dir)):
+        file_path = os.path.join(input_dir, entry)
+        if not os.path.isfile(file_path):
+            continue
+        if os.path.splitext(entry)[1].lower() in IMAGE_EXTENSIONS:
+            image_paths.append(file_path)
+
+    if not image_paths:
+        raise FileNotFoundError(f"No images found in input directory: {input_dir}")
+
+    return image_paths
 
 def load_model(config):
     model_path = os.path.join(config["load_weights_dir"], "model.pth")
@@ -97,13 +116,14 @@ def infer_and_save(model, device, img_path, out_root, idx, vis_range="100m", cma
 
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-    pred = infer_raw(model, device, img_rgb)
+    pred = infer_raw(model, device, img_rgb) * 100.0
 
     depth_gray, depth_color_rgb = pred_to_vis(pred, vis_range=vis_range, cmap=cmap)
 
     filename = f"{idx:06d}"
+    input_stem = os.path.splitext(os.path.basename(img_path))[0]
 
-    pred_npy_path = os.path.join(out_root, "depth_npy", filename + ".npy")
+    pred_npy_path = os.path.join(out_root, "depth_npy", input_stem + ".npy")
     gray_png_path = os.path.join(out_root, f"depth_vis_gray_{vis_range}", filename + ".png")
     color_png_path = os.path.join(out_root, f"depth_vis_color_{vis_range}", filename + ".png")
 
@@ -118,17 +138,17 @@ def infer_and_save(model, device, img_path, out_root, idx, vis_range="100m", cma
     cv2.imwrite(color_png_path, cv2.cvtColor(depth_color_rgb, cv2.COLOR_RGB2BGR))
 
 
-def main(config_path, txt_path, out_root, vis_range="100m", cmap="Spectral"):
+def main(config_path, input_dir, out_root, vis_range="100m", cmap="Spectral"):
     with open(config_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
         print("✅ Config loaded.")
 
     model, device = load_model(config)
 
-    with open(txt_path, "r") as f:
-        img_list = [l.strip() for l in f.readlines() if l.strip()]
+    img_list = collect_image_paths(input_dir)
 
     print(f"🔹 Total images to infer: {len(img_list)}")
+    print(f"🔹 Input directory: {input_dir}")
     print(f"🔹 Visualization: {vis_range}, colormap: {cmap}\n")
 
     for idx, img_path in enumerate(tqdm(img_list, desc="Inferencing"), start=1):
@@ -142,7 +162,7 @@ def main(config_path, txt_path, out_root, vis_range="100m", cmap="Spectral"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/infer.yaml")
-    parser.add_argument("--txt", default="datasets/test.txt")
+    parser.add_argument("--input-dir", required=True, help="directory containing input images")
     parser.add_argument("--output", default="test_output")
     parser.add_argument("--gpu", default="0", help="使用的GPU编号")
 
@@ -154,4 +174,4 @@ if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
-    main(args.config, args.txt, args.output, vis_range=args.vis, cmap=args.cmap)
+    main(args.config, args.input_dir, args.output, vis_range=args.vis, cmap=args.cmap)
