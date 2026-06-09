@@ -11,3 +11,4 @@ open3d
 tensorboardX
 mmengine
 pyexr
+urllib3==1.26.0
